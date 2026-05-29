@@ -1,0 +1,98 @@
+### d:\code\VisualStudioCode\go\gobench>go run ./cmd/server/main.go
+
+### 1. 系统健康检查 (无需权限)
+GET http://localhost:8080/health
+Accept: application/json
+
+###
+
+### 2. 用户注册
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+    "username": "gnk48lb",
+    "password": "8964"
+}
+
+###
+
+### 3. 用户登录 (登录成功后复制返回的 token)
+# @name login
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+    "username": "gnk48lb",
+    "password": "8964"
+}
+
+### 下面是需要认证的接口测试
+### 注意：请将下面的 <YOUR_TOKEN> 替换为上面登录接口返回的实际 token 字符串
+
+@token = {{login.response.body.data.token}}
+
+### 4. 创建任务 1 (HTTP 类型)
+POST http://localhost:8080/api/v1/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "抖音用户收益计算",
+    "task_type": "function",
+    "cron_expr": "0 0 * * *",
+    "payload": "{\"batch_size\": 1000, \"simulate_count\": 1000000}",
+    "retry_count": 3,
+    "timeout": 120
+}
+
+###
+
+### 5. 创建任务 2 (Shell 类型)
+POST http://localhost:8080/api/v1/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "清理过期视频缓存",
+    "task_type": "shell",
+    "cron_expr": "0 2 * * *",
+    "payload": "{\"command\": \"echo 'Cleaning expired video cache...'\"}",
+    "retry_count": 1,
+    "timeout": 60
+}
+
+###
+
+### 6. 获取任务列表 (带分页测试)
+GET http://localhost:8080/api/v1/tasks?page=1&page_size=10
+Authorization: Bearer {{token}}
+
+###
+
+### 7. 获取单个任务详情 (请根据列表返回的 ID 修改末尾的数字，比如 /1)
+GET http://localhost:8080/api/v1/tasks/1
+Authorization: Bearer {{token}}
+
+###
+
+### 8. 更新任务状态
+PUT http://localhost:8080/api/v1/tasks/2
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "抖音用户收益计算-已暂停",
+    "task_type": "function",
+    "cron_expr": "0 0 * * *",
+    "payload": "{\"batch_size\": 1000}",
+    "retry_count": 5,
+    "timeout": 120,
+    "status": "paused"
+}
+
+###
+
+### 9. 删除任务 (测试完可以试着删除，同样注意修改 ID)
+DELETE http://localhost:8080/api/v1/tasks/2
+Authorization: Bearer {{token}}
