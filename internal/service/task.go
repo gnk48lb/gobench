@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"gobench/internal/model"
+	"gobench/internal/queue"
 	"gobench/internal/repository"
 )
 
@@ -12,14 +14,22 @@ type TaskService interface {
 	ListTasks(page, pageSize int) ([]*model.Task, int64, error)
 	UpdateTask(task *model.Task) error
 	DeleteTask(id uint) error
+	TriggerTask(taskID uint) (*model.TaskLog, error)
+	GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error)
 }
 
 type taskService struct {
 	taskRepo repository.TaskRepository
+	logRepo  repository.TaskLogRepository
+	q        *queue.Queue
 }
 
-func NewTaskService(taskRepo repository.TaskRepository) TaskService {
-	return &taskService{taskRepo: taskRepo}
+func NewTaskService(taskRepo repository.TaskRepository, logRepo repository.TaskLogRepository, q *queue.Queue) TaskService {
+	return &taskService{
+		taskRepo: taskRepo,
+		logRepo:  logRepo,
+		q:        q,
+	}
 }
 
 func (s *taskService) CreateTask(task *model.Task) error {
@@ -74,4 +84,43 @@ func (s *taskService) DeleteTask(id uint) error {
 		return err
 	}
 	return s.taskRepo.Delete(id)
+}
+
+func (s *taskService) TriggerTask(taskID uint) (*model.TaskLog, error) {
+	// 1. Validate task exists
+	_, err := s.GetTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Create pending log
+	taskLog := &model.TaskLog{
+		TaskID: taskID,
+		Status: "pending",
+	}
+	if err := s.logRepo.Create(taskLog); err != nil {
+		return nil, err
+	}
+
+	// 3. Push to queue
+	msg := queue.TaskMessage{
+		TaskID: taskID,
+		LogID:  taskLog.ID,
+	}
+	if err := s.q.Push(context.Background(), msg); err != nil {
+		// Log creation succeeded but queue failed, status remains pending
+		return nil, errors.New("failed to enqueue task")
+	}
+
+	return taskLog, nil
+}
+
+func (s *taskService) GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+	return s.logRepo.ListByTaskID(taskID, page, pageSize)
 }

@@ -26,9 +26,10 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	}
 
 	// Get user ID from context (set by AuthMiddleware)
-	userID, exists := c.Get("userID")
-	if exists {
-		task.CreatorID = userID.(uint)
+	if id, ok := c.Get("userID"); ok {
+		if uid, valid := id.(uint); valid {
+			task.CreatorID = uid
+		}
 	}
 
 	if err := h.taskService.CreateTask(&task); err != nil {
@@ -114,4 +115,49 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, nil)
+}
+
+func (h *TaskHandler) Trigger(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+
+	taskLog, err := h.taskService.TriggerTask(uint(id))
+	if err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+
+	response.Success(c, taskLog)
+}
+
+type ListTaskLogsResponse struct {
+	Total int64            `json:"total"`
+	Items []*model.TaskLog `json:"items"`
+}
+
+func (h *TaskHandler) ListLogs(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+
+	logs, total, err := h.taskService.GetTaskLogs(uint(id), page, pageSize)
+	if err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+
+	response.Success(c, ListTaskLogsResponse{
+		Total: total,
+		Items: logs,
+	})
 }

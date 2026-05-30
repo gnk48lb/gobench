@@ -23,7 +23,7 @@ func Init() error {
 	}
 
 	// Auto Migrate the schema
-	if err := DB.AutoMigrate(&model.User{}, &model.Task{}); err != nil {
+	if err := DB.AutoMigrate(&model.User{}, &model.Task{}, &model.TaskLog{}); err != nil {
 		return fmt.Errorf("failed to auto migrate: %w", err)
 	}
 

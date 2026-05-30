@@ -4,3 +4,10 @@ mysql:
   dsn: "root:8964@tcp(localhost:8964)/gobench?charset=utf8mb4&parseTime=True&loc=Local"
 jwt:
   secret: "super-secret-key-change-in-prod"
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+worker:
+  queue_key: "gobench:task:queue"
+  concurrency: 5

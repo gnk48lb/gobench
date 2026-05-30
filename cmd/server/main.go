@@ -17,9 +17,12 @@ import (
 	"gobench/internal/middleware"
 	"gobench/internal/repository"
 	"gobench/internal/service"
+	"gobench/internal/queue"
+	"gobench/internal/worker"
 	"gobench/pkg/config"
 	"gobench/pkg/database"
 	"gobench/pkg/logger"
+	"gobench/pkg/redis"
 )
 
 func main() {
@@ -43,14 +46,27 @@ func main() {
 	}
 	logger.Log.Info("Connected to MySQL database successfully")
 
-	// 4. Dependency Injection
+	// 4. Init Redis
+	if err := redis.Init(); err != nil {
+		logger.Log.Fatal("Failed to connect to Redis", zap.Error(err))
+	}
+	logger.Log.Info("Connected to Redis successfully")
+
+	// 5. Dependency Injection
 	userRepo := repository.NewUserRepository()
 	authSvc := service.NewAuthService(userRepo)
 	authHdl := handler.NewAuthHandler(authSvc)
 
 	taskRepo := repository.NewTaskRepository()
-	taskSvc := service.NewTaskService(taskRepo)
+	logRepo := repository.NewTaskLogRepository()
+	taskQueue := queue.NewQueue(redis.Client, config.AppConfig.Worker.QueueKey)
+	
+	taskSvc := service.NewTaskService(taskRepo, logRepo, taskQueue)
 	taskHdl := handler.NewTaskHandler(taskSvc)
+
+	// 6. Start Worker
+	taskWorker := worker.NewWorker(taskQueue, taskRepo, logRepo)
+	taskWorker.Start()
 
 	// 5. Init Gin router & Routes
 	router := gin.Default()
@@ -74,6 +90,8 @@ func main() {
 			taskGroup.GET("", taskHdl.List)
 			taskGroup.PUT("/:id", taskHdl.Update)
 			taskGroup.DELETE("/:id", taskHdl.Delete)
+			taskGroup.POST("/:id/trigger", taskHdl.Trigger)
+			taskGroup.GET("/:id/logs", taskHdl.ListLogs)
 		}
 	}
 
@@ -102,6 +120,8 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Log.Fatal("Server forced to shutdown:", zap.Error(err))
 	}
+
+	taskWorker.Stop()
 
 	logger.Log.Info("Server exiting")
 }
