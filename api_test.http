@@ -142,7 +142,7 @@ POST http://localhost:8080/api/v1/tasks/3/trigger
 Authorization: Bearer {{token}}
 Accept: application/json
 
-### 14. 查看硬核任务的运行输出日志
+### 14. 查看硬核任务的运行输出日志(只有最近10条)
 GET http://localhost:8080/api/v1/tasks/3/logs?page=1&page_size=10
 Authorization: Bearer {{token}}
 Accept: application/json
