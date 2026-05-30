@@ -51,6 +51,13 @@ func simulateRevenueCalc(ctx context.Context, payloadStr string) (string, error)
 	start := time.Now()
 
 	for i := 0; i < batches; i++ {
+		select {
+		case <-ctx.Done():
+			wg.Wait() // Ensure running goroutines finish before returning
+			return "", ctx.Err()
+		default:
+		}
+
 		wg.Add(1)
 		concurrencyLimit <- struct{}{} // Acquire token
 		go func(batchIndex int) {
@@ -58,7 +65,12 @@ func simulateRevenueCalc(ctx context.Context, payloadStr string) (string, error)
 			defer func() { <-concurrencyLimit }() // Release token
 
 			// Simulate processing time (10ms - 50ms)
-			time.Sleep(time.Duration(rand.Intn(40)+10) * time.Millisecond)
+			sleepTime := time.Duration(rand.Intn(40)+10) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return // Context cancelled/timed out, exit early
+			case <-time.After(sleepTime):
+			}
 
 			// Simulate revenue calculation result for this batch
 			batchRevenue := int64(payload.BatchSize * rand.Intn(100))
@@ -67,6 +79,10 @@ func simulateRevenueCalc(ctx context.Context, payloadStr string) (string, error)
 	}
 
 	wg.Wait()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
 	duration := time.Since(start)
 
 	output := fmt.Sprintf("Processed %d users in %d batches. Total Revenue: %.2f RMB. Time taken: %s",

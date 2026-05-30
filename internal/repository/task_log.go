@@ -9,7 +9,7 @@ import (
 
 type TaskLogRepository interface {
 	Create(log *model.TaskLog) error
-	UpdateStatus(id uint, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error
+	UpdateStatus(id uint, workerID string, retryNum int, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error
 	ListByTaskID(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error)
 }
 
@@ -25,8 +25,10 @@ func (r *taskLogRepository) Create(log *model.TaskLog) error {
 	return r.db.Create(log).Error
 }
 
-func (r *taskLogRepository) UpdateStatus(id uint, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error {
+func (r *taskLogRepository) UpdateStatus(id uint, workerID string, retryNum int, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error {
 	updates := map[string]interface{}{
+		"worker_id":   workerID,
+		"retry_num":   retryNum,
 		"status":      status,
 		"output":      output,
 		"error_msg":   errorMsg,

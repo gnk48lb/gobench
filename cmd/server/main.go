@@ -84,6 +84,7 @@ func main() {
 
 		taskGroup := apiV1.Group("/tasks")
 		taskGroup.Use(middleware.AuthMiddleware())
+		taskGroup.Use(middleware.RateLimitMiddleware(10, time.Minute))
 		{
 			taskGroup.POST("", taskHdl.Create)
 			taskGroup.GET("/:id", taskHdl.Get)
@@ -92,6 +93,7 @@ func main() {
 			taskGroup.DELETE("/:id", taskHdl.Delete)
 			taskGroup.POST("/:id/trigger", taskHdl.Trigger)
 			taskGroup.GET("/:id/logs", taskHdl.ListLogs)
+			taskGroup.POST("/:id/schedule", taskHdl.Schedule)
 		}
 	}
 

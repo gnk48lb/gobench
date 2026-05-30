@@ -1,4 +1,13 @@
-### d:\code\VisualStudioCode\go\gobench>go run ./cmd/server/main.go
+### ===================================================================
+### GoBench Distributed Task Scheduling Platform - API Test Suite
+### (Designed for VS Code "REST Client" Extension)
+### ===================================================================
+### Quick Start:
+### 1. Run the server: `go run ./cmd/server/main.go`
+### 2. Send request "2. 用户注册" to register a user.
+### 3. Send request "3. 用户登录" to login and dynamically set the {{token}} variable.
+### 4. Run any of the authorized endpoints below!
+### ===================================================================
 
 ### 1. 系统健康检查 (无需权限)
 GET http://localhost:8080/health
@@ -17,7 +26,7 @@ Content-Type: application/json
 
 ###
 
-### 3. 用户登录 (登录成功后复制返回的 token)
+### 3. 用户登录 (登录成功后会自动将 Token 注入 {{token}} 变量，无需手动复制)
 # @name login
 POST http://localhost:8080/api/v1/auth/login
 Content-Type: application/json
@@ -27,12 +36,20 @@ Content-Type: application/json
     "password": "8964"
 }
 
-### 下面是需要认证的接口测试
-### 注意：请将下面的 <YOUR_TOKEN> 替换为上面登录接口返回的实际 token 字符串
+###
 
+### ===================================================================
+### 变量声明 (由登录接口返回值动态填充，若未填充可在此手动修改)
+### ===================================================================
 @token = {{login.response.body.data.token}}
 
-### 4. 创建任务 1 (HTTP 类型)
+
+### ===================================================================
+### 任务管理模块 (CRUD) - 需 JWT 鉴权与限流控制 (10 req/min)
+### ===================================================================
+
+### 4. 创建任务 1 (正常 Function 计算类型)
+# @name createTask1
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -48,7 +65,8 @@ Content-Type: application/json
 
 ###
 
-### 5. 创建任务 2 (Shell 类型)
+### 5. 创建任务 2 (Shell 脚本类型)
+# @name createTask2
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -70,13 +88,15 @@ Authorization: Bearer {{token}}
 
 ###
 
-### 7. 获取单个任务详情 (请根据列表返回的 ID 修改末尾的数字，比如 /1)
+### 7. 获取单个任务详情
+### (默认读取刚创建的任务 1 的 ID, 也可以修改末尾的数字如 /1)
+@taskId1 = {{createTask1.response.body.data.ID}}
 GET http://localhost:8080/api/v1/tasks/1
 Authorization: Bearer {{token}}
 
 ###
 
-### 8. 更新任务状态
+### 8. 更新任务属性及状态 (将状态更新为 paused 暂停)
 PUT http://localhost:8080/api/v1/tasks/1
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -88,41 +108,42 @@ Content-Type: application/json
     "payload": "{\"batch_size\": 1000}",
     "retry_count": 5,
     "timeout": 120,
-    "status": "active"
+    "status": "paused"
 }
 
 ###
 
-### 9. 删除任务 (测试完可以试着删除，同样注意修改 ID)
+### 9. 删除任务 (如需测试，可对任务 2 执行逻辑删除)
+@taskId2 = {{createTask2.response.body.data.ID}}
 DELETE http://localhost:8080/api/v1/tasks/2
 Authorization: Bearer {{token}}
 
-###
 
-###################################################################
-### 以下是 Phase 2 (Step 2.1) 新增的任务调度及日志测试接口
-###################################################################
+### ===================================================================
+### 高并发引擎、分布式队列与任务流转测试接口
+### ===================================================================
 
-### 10. 手动触发任务立即执行 (会向 Redis 队列推入消息，并创建一条 pending 日志)
-### 注意：请确保末尾的数字对应你数据库里存在的任务 ID (如 /1)
+### 10. 手动立即触发任务执行 (推入 Redis 队列并由 Worker 消费)
+### (默认触发刚才创建的任务 1)
 POST http://localhost:8080/api/v1/tasks/1/trigger
 Authorization: Bearer {{token}}
 Accept: application/json
 
 ###
 
-### 11. 获取某个任务的执行历史日志列表 (带分页)
-### 注意：通过此接口观察刚才触发的任务状态，应该从 pending -> running -> success 变化
+### 11. 获取该任务的执行历史日志列表 (带分页)
+### (可以观察状态从 pending -> running -> success 变化，以及对应的 WorkerID)
 GET http://localhost:8080/api/v1/tasks/1/logs?page=1&page_size=10
 Authorization: Bearer {{token}}
 Accept: application/json
 
 
-###################################################################
-### 以下是 Phase 2 (Step 2.2) 高并发引擎与分布式锁专属测试接口
-###################################################################
+### ===================================================================
+### 大规模计算模拟与分布式锁测试
+### ===================================================================
 
-### 12. 创建一个大规模百万用户收益计算任务 (Function 类型)
+### 12. 创建大规模百万用户收益计算任务
+# @name createHeavyTask
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -136,13 +157,49 @@ Content-Type: application/json
     "timeout": 120
 }
 
-### 13. 手动触发这个硬核大规模任务
-### 注意：请根据第 12 步返回的实际 ID 修改末尾的数字（比如下面假设新任务 ID 是 /2）
+###
+
+### 13. 手动触发硬核百万计算任务 (验证 Worker 并发池与任务耗时模拟)
 POST http://localhost:8080/api/v1/tasks/3/trigger
 Authorization: Bearer {{token}}
 Accept: application/json
 
-### 14. 查看硬核任务的运行输出日志(只有最近10条)
+###
+
+### 14. 查看该硬核任务的运行输出日志及执行进度
 GET http://localhost:8080/api/v1/tasks/3/logs?page=1&page_size=10
 Authorization: Bearer {{token}}
 Accept: application/json
+
+
+### ===================================================================
+### 延迟队列与高可用分布式调度测试 (Phase 2 - Step 2.3 新增)
+### ===================================================================
+
+### 15. 延迟调度任务 (指定秒数后自动进入 Worker 消费队列)
+### (默认将在 10 秒后触发，可修改 delay_seconds 进行自定义)
+POST http://localhost:8080/api/v1/tasks/1/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "delay_seconds": 10
+}
+
+###
+
+### 16. 获取刚才延迟调度任务的执行历史
+### (延迟期间可以在此观察状态为 pending，15秒后状态变为 running -> success)
+GET http://localhost:8080/api/v1/tasks/1/logs?page=1&page_size=10
+Authorization: Bearer {{token}}
+Accept: application/json
+
+
+### ===================================================================
+### 滑动窗口限流控制测试 (Rate Limiting)
+### ===================================================================
+### 提示: 我们的 RateLimitMiddleware 设置为了 10次/分钟。
+### 你可以快速、连续点击发送上述任意带有 /tasks 的请求 (例如 "6. 获取任务列表")。
+### 超过 10 次后，服务器将返回 HTTP 429 Too Many Requests 错误，包含 JSON:
+### { "code": 429, "msg": "too many requests" }
+### ===================================================================

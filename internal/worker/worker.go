@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"gobench/internal/model"
 	"gobench/internal/queue"
 	"gobench/internal/repository"
 	"gobench/pkg/config"
@@ -53,6 +54,22 @@ func (w *Worker) Start() {
 			w.loop(workerIndex)
 		}(i)
 	}
+
+	// Start delayed queue poller
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-w.stopCh:
+				return
+			case <-ticker.C:
+				w.q.MoveDelayedToQueue(context.Background())
+			}
+		}
+	}()
 }
 
 func (w *Worker) loop(workerIndex int) {
@@ -76,9 +93,17 @@ func (w *Worker) loop(workerIndex int) {
 				continue
 			}
 
-			// 2. Distributed lock to prevent split-brain
+			// 2. Fetch task details BEFORE locking
+			task, err := w.taskRepo.GetByID(msg.TaskID)
+			if err != nil || task == nil {
+				logger.Log.Error("Task not found or failed to fetch", zap.Error(err), zap.Uint("task_id", msg.TaskID))
+				continue
+			}
+
+			// 3. Distributed lock to prevent split-brain with dynamic timeout
 			lockKey := fmt.Sprintf("gobench:lock:task:%d", msg.TaskID)
-			acquired, err := pkgredis.AcquireLock(ctx, pkgredis.Client, lockKey, w.workerID, 5*time.Minute)
+			lockTimeout := time.Duration(task.Timeout+10) * time.Second
+			acquired, err := pkgredis.AcquireLock(ctx, pkgredis.Client, lockKey, w.workerID, lockTimeout)
 			if err != nil {
 				logger.Log.Error("Failed to acquire lock", zap.Error(err), zap.Uint("task_id", msg.TaskID))
 				continue
@@ -88,50 +113,65 @@ func (w *Worker) loop(workerIndex int) {
 				continue
 			}
 
-			// 3. Guarantee lock release
-			w.processTask(ctx, msg, lockKey)
+			// 4. Guarantee lock release and process task
+			w.processTask(ctx, msg, task, lockKey)
 		}
 	}
 }
 
-func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, lockKey string) {
+func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *model.Task, lockKey string) {
 	// Defer lock release
 	defer pkgredis.ReleaseLock(ctx, pkgredis.Client, lockKey, w.workerID)
 
 	now := time.Now()
 	// Update status to running
-	if err := w.logRepo.UpdateStatus(msg.LogID, "running", "", "", &now, nil, 0); err != nil {
+	if err := w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "running", "", "", &now, nil, 0); err != nil {
 		logger.Log.Error("Failed to update task log to running", zap.Error(err), zap.Uint("log_id", msg.LogID))
 		return
 	}
 
-	// Fetch task details
-	task, err := w.taskRepo.GetByID(msg.TaskID)
-	if err != nil || task == nil {
-		errorMsg := "Task not found or failed to fetch"
-		if err != nil {
-			errorMsg = err.Error()
-		}
-		finishedAt := time.Now()
-		durationMs := finishedAt.Sub(now).Milliseconds()
-		w.logRepo.UpdateStatus(msg.LogID, "failed", "", errorMsg, nil, &finishedAt, durationMs)
-		return
-	}
+	// Create execution context with timeout
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Timeout)*time.Second)
+	defer cancel()
 
 	// Execute task
-	output, err := ExecuteTask(ctx, task)
+	output, err := ExecuteTask(execCtx, task)
 	
 	finishedAt := time.Now()
 	durationMs := finishedAt.Sub(now).Milliseconds()
 
 	if err != nil {
 		// Update as failed
-		w.logRepo.UpdateStatus(msg.LogID, "failed", output, err.Error(), nil, &finishedAt, durationMs)
+		w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "failed", output, err.Error(), nil, &finishedAt, durationMs)
+
+		// Retry logic
+		if msg.RetryNum < task.RetryCount {
+			logger.Log.Info("Retrying task", zap.Uint("task_id", msg.TaskID), zap.Int("retry_num", msg.RetryNum+1))
+			
+			// Create new pending log for the retry
+			retryLog := &model.TaskLog{
+				TaskID: task.ID,
+				Status: "pending",
+			}
+			if err := w.logRepo.Create(retryLog); err != nil {
+				logger.Log.Error("Failed to create retry task log", zap.Error(err))
+				return
+			}
+			
+			retryMsg := queue.TaskMessage{
+				TaskID:   msg.TaskID,
+				LogID:    retryLog.ID,
+				RetryNum: msg.RetryNum + 1,
+			}
+			if err := w.q.Push(context.Background(), retryMsg); err != nil {
+				logger.Log.Error("Failed to push retry message to queue", zap.Error(err))
+			}
+		}
 		return
 	}
 
 	// Update as success
-	w.logRepo.UpdateStatus(msg.LogID, "success", output, "", nil, &finishedAt, durationMs)
+	w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "success", output, "", nil, &finishedAt, durationMs)
 }
 
 func (w *Worker) Stop() {

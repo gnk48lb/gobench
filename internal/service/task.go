@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
+
 	"gobench/internal/model"
 	"gobench/internal/queue"
 	"gobench/internal/repository"
@@ -16,6 +18,7 @@ type TaskService interface {
 	DeleteTask(id uint) error
 	TriggerTask(taskID uint) (*model.TaskLog, error)
 	GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error)
+	ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLog, error)
 }
 
 type taskService struct {
@@ -123,4 +126,33 @@ func (s *taskService) GetTaskLogs(taskID uint, page, pageSize int) ([]*model.Tas
 		pageSize = 10
 	}
 	return s.logRepo.ListByTaskID(taskID, page, pageSize)
+}
+
+func (s *taskService) ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLog, error) {
+	// 1. Validate task exists
+	_, err := s.GetTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Create pending log
+	taskLog := &model.TaskLog{
+		TaskID: taskID,
+		Status: "pending", // Scheduled tasks are also pending until worker picks them up
+	}
+	if err := s.logRepo.Create(taskLog); err != nil {
+		return nil, err
+	}
+
+	// 3. Push to delayed queue
+	msg := queue.TaskMessage{
+		TaskID: taskID,
+		LogID:  taskLog.ID,
+	}
+	runAt := time.Now().Add(time.Duration(delaySeconds) * time.Second)
+	if err := s.q.PushDelayed(context.Background(), msg, runAt); err != nil {
+		return nil, errors.New("failed to schedule task")
+	}
+
+	return taskLog, nil
 }

@@ -161,3 +161,30 @@ func (h *TaskHandler) ListLogs(c *gin.Context) {
 		Items: logs,
 	})
 }
+
+type ScheduleRequest struct {
+	DelaySeconds int `json:"delay_seconds" binding:"required,min=1"`
+}
+
+func (h *TaskHandler) Schedule(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+
+	var req ScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	taskLog, err := h.taskService.ScheduleTask(uint(id), req.DelaySeconds)
+	if err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+
+	response.Success(c, taskLog)
+}
