@@ -45,11 +45,10 @@ Content-Type: application/json
 
 
 ### ===================================================================
-### 任务管理模块 (CRUD) - 需 JWT 鉴权与限流控制 (10 req/min)
+### 任务管理模块 (创建任务)
 ### ===================================================================
 
-### 4. 创建任务 1 (正常 Function 计算类型)
-# @name createTask1
+### 创建任务(正常 Function 计算类型)
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -65,8 +64,7 @@ Content-Type: application/json
 
 ###
 
-### 5. 创建任务 2 (Shell 脚本类型)
-# @name createTask2
+### 创建任务 (Shell 脚本类型)
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -80,125 +78,13 @@ Content-Type: application/json
     "timeout": 60
 }
 
-###
-
-### 6. 获取任务列表 (带分页测试)
-GET http://localhost:8080/api/v1/tasks?page=1&page_size=10
-Authorization: Bearer {{token}}
-
-###
-
-### 7. 获取单个任务详情
-### (默认读取刚创建的任务 1 的 ID, 也可以修改末尾的数字如 /1)
-GET http://localhost:8080/api/v1/tasks/4
-Authorization: Bearer {{token}}
-
-###
-
-### 8. 更新任务属性及状态 (将状态更新为 paused 暂停)
-PUT http://localhost:8080/api/v1/tasks/1
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-    "name": "抖音用户收益计算-已暂停",
-    "task_type": "function",
-    "cron_expr": "0 0 * * *",
-    "payload": "{\"batch_size\": 1000}",
-    "retry_count": 5,
-    "timeout": 120,
-    "status": "paused"
-}
-
-###
-
-### 9. 删除任务 (如需测试，可对任务 2 执行逻辑删除)
-DELETE http://localhost:8080/api/v1/tasks/2
-Authorization: Bearer {{token}}
-
-
-### ===================================================================
-### 高并发引擎、分布式队列与任务流转测试接口
-### ===================================================================
-
-### 10. 手动立即触发任务执行 (推入 Redis 队列并由 Worker 消费)
-### (默认触发刚才创建的任务 1)
-POST http://localhost:8080/api/v1/tasks/4/trigger
-Authorization: Bearer {{token}}
-Accept: application/json
-
-###
-
-### 11. 获取该任务的执行历史日志列表 (带分页)
-### (可以观察状态从 pending -> running -> success 变化，以及对应的 WorkerID)
-GET http://localhost:8080/api/v1/tasks/4/logs?page=1&page_size=10
-Authorization: Bearer {{token}}
-Accept: application/json
-
-
-### ===================================================================
-### 大规模计算模拟与分布式锁测试
-### ===================================================================
-
-### 12. 创建大规模百万用户收益计算任务
-# @name createHeavyTask
-POST http://localhost:8080/api/v1/tasks
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-    "name": "硬核百万收益计算器",
-    "task_type": "function",
-    "cron_expr": "",
-    "payload": "{\"batch_size\": 1000, \"simulate_count\": 1000000}",
-    "retry_count": 3,
-    "timeout": 120
-}
-
-###
-
-### 13. 手动触发硬核百万计算任务 (验证 Worker 并发池与任务耗时模拟)
-POST http://localhost:8080/api/v1/tasks/3/trigger
-Authorization: Bearer {{token}}
-Accept: application/json
-
-###
-
-### 14. 查看该硬核任务的运行输出日志及执行进度
-GET http://localhost:8080/api/v1/tasks/3/logs?page=1&page_size=10
-Authorization: Bearer {{token}}
-Accept: application/json
-
-
-### ===================================================================
-### 延迟队列与高可用分布式调度测试 (Phase 2 - Step 2.3 新增)
-### ===================================================================
-
-### 15. 延迟调度任务 (指定秒数后自动进入 Worker 消费队列)
-### (默认将在 10 秒后触发，可修改 delay_seconds 进行自定义)
-POST http://localhost:8080/api/v1/tasks/1/schedule
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-    "delay_seconds": 10
-}
-
-###
-
-### 16. 获取刚才延迟调度任务的执行历史
-### (延迟期间可以在此观察状态为 pending，15秒后状态变为 running -> success)
-GET http://localhost:8080/api/v1/tasks/7/logs?page=1&page_size=10
-Authorization: Bearer {{token}}
-Accept: application/json
-
 
 ### ===================================================================
 ### Shell 任务测试 (task_type: "shell")
 ### Windows 下使用 PowerShell；Linux/macOS 下自动切换为 bash
 ### ===================================================================
 
-### 17. 创建任务：磁盘空间报告 (每小时定时执行一次)
+### 创建任务：磁盘空间报告 (每小时定时执行一次)
 ### 结果会存进 task_log.output，可以在日志接口中查看
 # @name createDiskReport
 POST http://localhost:8080/api/v1/tasks
@@ -214,20 +100,16 @@ Content-Type: application/json
     "timeout": 30
 }
 
-###
-
-### 18. 立即触发磁盘报告任务
+### 立即触发磁盘报告任务
 ### 期望输出示例:
 ###   DeviceID FreeGB SizeGB
 ###   -------- ------ ------
 ###   C:         82.4  476.9
-###   D:        320.1  931.5
-POST http://localhost:8080/api/v1/tasks/6/trigger
-Authorization: Bearer {{token}}
+###   D:        320.1 931.5
 
 ###
 
-### 19. 创建任务：定时清理系统临时文件夹 (每天凌晨 3 点执行)
+### 创建任务：定时清理系统临时文件夹 (每天凌晨 3 点执行)
 ### Remove-Item 删除 $env:TEMP 下所有内容，-ErrorAction SilentlyContinue
 ### 确保跳过被锁文件而不中断任务
 POST http://localhost:8080/api/v1/tasks
@@ -245,7 +127,7 @@ Content-Type: application/json
 
 ###
 
-### 20. 创建任务：清理指定文件夹内容 (如 QQ 视频缓存)
+### 创建任务：清理指定文件夹内容 (如 QQ 视频缓存)
 ### ⚠️  将 payload 里的路径换成你实际想清理的目录再触发
 ### 这里只删除目录内的文件，不删除目录本身；-ErrorAction SilentlyContinue
 ### 确保路径不存在时任务也能正常结束（输出为空而不是报错）
@@ -257,14 +139,14 @@ Content-Type: application/json
     "name": "清理 QQ 视频缓存",
     "task_type": "shell",
     "cron_expr": "0 4 * * *",
-    "payload": "{\"command\": \"$path = 'D:\\\\QQ\\\\Tencent Files\\\\2501342338\\\\Video'; if (Test-Path $path) { $count = (Get-ChildItem $path -File).Count; Remove-Item -Path \\\"$path\\\\*\\\" -Recurse -Force -ErrorAction SilentlyContinue; Write-Output \\\"Deleted $count file(s) from $path\\\" } else { Write-Output \\\"Path not found: $path\\\" }\"}",
+    "payload": "{\"command\": \"$path = 'D:\\\\QQ\\\\Tencent Files\\\\8964\\\\Video'; if (Test-Path $path) { $count = (Get-ChildItem $path -File).Count; Remove-Item -Path \\\"$path\\\\*\\\" -Recurse -Force -ErrorAction SilentlyContinue; Write-Output \\\"Deleted $count file(s) from $path\\\" } else { Write-Output \\\"Path not found: $path\\\" }\"}",
     "retry_count": 0,
     "timeout": 30
 }
 
 ###
 
-### 21. 创建任务：清空回收站 (每天深夜执行)
+### 创建任务：清空回收站 (每天深夜执行)
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -280,12 +162,11 @@ Content-Type: application/json
 
 ###
 
-
 ### ===================================================================
 ### HTTP 任务测试 (task_type: "http")
 ### ===================================================================
 
-### 22. 创建任务：一言（Hitokoto）随机名言
+### 创建任务：一言（Hitokoto）随机名言
 ### 每次执行从动漫/文学语录中随机返回一句话，存入日志
 ### 可以设置 cron 每小时跑一次，MySQL 里就攒了一本语录
 # @name createHitokoto
@@ -304,16 +185,7 @@ Content-Type: application/json
 
 ###
 
-### 23. 立即触发一言任务
-### 期望 output 格式:
-###   Status: 200 | Latency: 142ms
-###   {"id":6182,"uuid":"...","hitokoto":"我们的征途是星辰大海","from":"银河英雄传说",...}
-POST http://localhost:8080/api/v1/tasks/7/trigger
-Authorization: Bearer {{token}}
-
-###
-
-### 24. 创建任务：公网 IP 监控
+### 创建任务：公网 IP 监控
 ### 每小时查询一次你的公网 IP；如果你家是动态宽带，
 ### 这个任务会记录 IP 每次变化的时间点
 # @name createIPMonitor
@@ -330,25 +202,17 @@ Content-Type: application/json
     "timeout": 10
 }
 
-###
-
-### 25. 立即触发公网 IP 查询
 ### 期望 output 格式:
 ###   Status: 200 | Latency: 88ms
 ###   {"ip":"114.xxx.xxx.xxx"}
-POST http://localhost:8080/api/v1/tasks/8/trigger
-Authorization: Bearer {{token}}
 
 ###
 
-
 ### ===================================================================
 ### 并发站点可用性检测 - Batch Ping (task_type: "function", function: "batch_ping")
-### 这是展示 Go 并发优势最直接的任务：
-### 20 个 URL 并发检测，总耗时 ≈ 最慢那一个，而不是 20 个加起来
 ### ===================================================================
 
-### 26. 创建 Batch Ping 任务 (检测常用站点可达性)
+### 创建 Batch Ping 任务 (检测常用站点可达性)
 # @name createBatchPing
 POST http://localhost:8080/api/v1/tasks
 Authorization: Bearer {{token}}
@@ -365,7 +229,20 @@ Content-Type: application/json
 
 ###
 
-### 27. 立即触发 Batch Ping 任务
+### 创建一个简化版 Batch Ping（只测国内常用站点，延迟更低）
+POST http://localhost:8080/api/v1/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "国内站点可用性检测",
+    "task_type": "function",
+    "cron_expr": "*/30 * * * *",
+    "payload": "{\"function\": \"batch_ping\", \"urls\": [\"https://www.baidu.com\", \"https://www.bilibili.com\", \"https://www.zhihu.com\", \"https://www.taobao.com\", \"https://www.jd.com\", \"https://www.weibo.com\", \"https://www.douban.com\", \"https://music.163.com\"], \"timeout_seconds\": 3}",
+    "retry_count": 0,
+    "timeout": 10
+}
+
 ### 期望输出格式（task_log.output）:
 ###
 ###   Batch Ping — 20 URLs (per-request timeout: 5s)
@@ -380,39 +257,3 @@ Content-Type: application/json
 ###
 ### 注意 Wall clock 约等于 5s（超时时间），而不是 20 * 平均延迟
 ### 这就是 goroutine 并发的实际效果
-POST http://localhost:8080/api/v1/tasks/10/trigger
-Authorization: Bearer {{token}}
-
-###
-
-### 28. 查看 Batch Ping 执行日志
-GET http://localhost:8080/api/v1/tasks/10/logs?page=1&page_size=5
-Authorization: Bearer {{token}}
-
-###
-
-### 29. 创建一个简化版 Batch Ping（只测国内常用站点，延迟更低）
-POST http://localhost:8080/api/v1/tasks
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-    "name": "国内站点可用性检测",
-    "task_type": "function",
-    "cron_expr": "*/30 * * * *",
-    "payload": "{\"function\": \"batch_ping\", \"urls\": [\"https://www.baidu.com\", \"https://www.bilibili.com\", \"https://www.zhihu.com\", \"https://www.taobao.com\", \"https://www.jd.com\", \"https://www.weibo.com\", \"https://www.douban.com\", \"https://music.163.com\"], \"timeout_seconds\": 3}",
-    "retry_count": 0,
-    "timeout": 10
-}
-
-###
-
-
-### ===================================================================
-### 滑动窗口限流控制测试 (Rate Limiting)
-### ===================================================================
-### 提示: 我们的 RateLimitMiddleware 设置为了 10次/分钟。
-### 你可以快速、连续点击发送上述任意带有 /tasks 的请求 (例如 "6. 获取任务列表")。
-### 超过 10 次后，服务器将返回 HTTP 429 Too Many Requests 错误，包含 JSON:
-### { "code": 429, "msg": "too many requests" }
-### ===================================================================

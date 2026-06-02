@@ -1,0 +1,112 @@
+### ===================================================================
+### GoBench Distributed Task Scheduling Platform - API Test Suite
+### (Designed for VS Code "REST Client" Extension)
+### ===================================================================
+### Quick Start:
+### 1. Run the server: `go run ./cmd/server/main.go`
+### 2. Send request "2. 用户注册" to register a user.
+### 3. Send request "3. 用户登录" to login and dynamically set the {{token}} variable.
+### 4. Run any of the authorized endpoints below!
+### ===================================================================
+
+### 1. 系统健康检查 (无需权限)
+GET http://localhost:8080/health
+Accept: application/json
+
+###
+
+### 2. 用户注册
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+    "username": "gnk48lb",
+    "password": "8964"
+}
+
+###
+
+### 3. 用户登录 (登录成功后会自动将 Token 注入 {{token}} 变量，无需手动复制)
+# @name login
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+    "username": "gnk48lb",
+    "password": "8964"
+}
+
+###
+
+### ===================================================================
+### 变量声明 (由登录接口返回值动态填充，若未填充可在此手动修改)
+### ===================================================================
+@token = {{login.response.body.data.token}}
+
+
+### ===================================================================
+### 任务管理模块 (CRUD & 状态维护) - 需 JWT 鉴权与限流控制 (10 req/min)
+### ===================================================================
+
+### 手动立即触发任务执行 (推入 Redis 队列并由 Worker 消费)
+POST http://localhost:8080/api/v1/tasks/4/trigger
+Authorization: Bearer {{token}}
+Accept: application/json
+
+
+### 获取该任务的执行历史日志列表 (带分页)
+### (可以观察状态从 pending -> running -> success 变化，以及对应的 WorkerID)
+GET http://localhost:8080/api/v1/tasks/4/logs?page=1&page_size=10
+Authorization: Bearer {{token}}
+Accept: application/json
+
+
+### 获取单个任务详情
+GET http://localhost:8080/api/v1/tasks/4
+Authorization: Bearer {{token}}
+
+
+### 获取任务列表 (带分页测试)
+GET http://localhost:8080/api/v1/tasks?page=1&page_size=10
+Authorization: Bearer {{token}}
+
+### 更新任务属性及状态 (将状态更新为 paused 暂停)
+PUT http://localhost:8080/api/v1/tasks/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "抖音用户收益计算-已暂停",
+    "task_type": "function",
+    "cron_expr": "0 0 * * *",
+    "payload": "{\"batch_size\": 1000}",
+    "retry_count": 5,
+    "timeout": 120,
+    "status": "paused"
+}
+
+###
+
+### 删除任务 (如需测试，可对任务 2 执行 logic 删除)
+DELETE http://localhost:8080/api/v1/tasks/2
+Authorization: Bearer {{token}}
+
+### 延迟调度任务 (指定秒数后自动进入 Worker 消费队列)
+### (默认将在 10 秒后触发，可修改 delay_seconds 进行自定义)
+POST http://localhost:8080/api/v1/tasks/1/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "delay_seconds": 10
+}
+
+
+### ===================================================================
+### 滑动窗口限流控制测试 (Rate Limiting)
+### ===================================================================
+### 提示: 我们的 RateLimitMiddleware 设置为了 10次/分钟。
+### 你可以快速、连续点击发送上述任意带有 /tasks 的请求 (例如 "6. 获取任务列表")。
+### 超过 10 次后，服务器将返回 HTTP 429 Too Many Requests 错误，包含 JSON:
+### { "code": 429, "msg": "too many requests" }
+### ===================================================================

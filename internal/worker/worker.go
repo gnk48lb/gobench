@@ -7,15 +7,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
 	"gobench/internal/model"
 	"gobench/internal/queue"
 	"gobench/internal/repository"
 	"gobench/pkg/config"
 	"gobench/pkg/logger"
 	pkgredis "gobench/pkg/redis"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type Worker struct {
@@ -83,6 +84,7 @@ func (w *Worker) loop(workerIndex int) {
 			ctx := context.Background()
 			
 			// 1. Pop message (timeout 2s)
+			// // 如果队列为空，会阻塞最多2秒后返回redis.Nil错误
 			msg, err := w.q.Pop(ctx, 2*time.Second)
 			if err != nil {
 				if errors.Is(err, redis.Nil) {

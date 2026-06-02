@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	redisClient "github.com/redis/go-redis/v9"
 	"gobench/pkg/config"
+
+	redisClient "github.com/redis/go-redis/v9"
 )
 
 var Client *redisClient.Client
