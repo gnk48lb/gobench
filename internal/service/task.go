@@ -19,6 +19,8 @@ type TaskService interface {
 	TriggerTask(taskID uint) (*model.TaskLog, error)
 	GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error)
 	ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLog, error)
+	GetOverallStats(since time.Time) (*repository.OverallStats, error)
+	GetTaskStats(taskID uint) (*repository.TaskStats, error)
 }
 
 type taskService struct {
@@ -155,4 +157,12 @@ func (s *taskService) ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLo
 	}
 
 	return taskLog, nil
+}
+
+func (s *taskService) GetOverallStats(since time.Time) (*repository.OverallStats, error) {
+	return s.logRepo.GetOverallStats(since)
+}
+
+func (s *taskService) GetTaskStats(taskID uint) (*repository.TaskStats, error) {
+	return s.logRepo.GetTaskStats(taskID)
 }

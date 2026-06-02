@@ -3,19 +3,22 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gobench/internal/model"
+	"gobench/internal/scheduler"
 	"gobench/internal/service"
 	"gobench/pkg/response"
 )
 
 type TaskHandler struct {
 	taskService service.TaskService
+	scheduler   *scheduler.Scheduler
 }
 
-func NewTaskHandler(taskService service.TaskService) *TaskHandler {
-	return &TaskHandler{taskService: taskService}
+func NewTaskHandler(taskService service.TaskService, sched *scheduler.Scheduler) *TaskHandler {
+	return &TaskHandler{taskService: taskService, scheduler: sched}
 }
 
 func (h *TaskHandler) Create(c *gin.Context) {
@@ -36,6 +39,8 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		response.Error(c, 500, err.Error())
 		return
 	}
+
+	h.scheduler.RegisterTask(&task)
 
 	response.Success(c, task)
 }
@@ -98,6 +103,10 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
+	if updated, err := h.taskService.GetTask(task.ID); err == nil {
+		h.scheduler.UpdateTask(updated)
+	}
+
 	response.Success(c, nil)
 }
 
@@ -113,6 +122,8 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 		response.Error(c, 500, err.Error())
 		return
 	}
+
+	h.scheduler.UnregisterTask(uint(id))
 
 	response.Success(c, nil)
 }
@@ -187,4 +198,30 @@ func (h *TaskHandler) Schedule(c *gin.Context) {
 	}
 
 	response.Success(c, taskLog)
+}
+
+func (h *TaskHandler) GetStats(c *gin.Context) {
+	since := time.Now().Add(-24 * time.Hour)
+	stats, err := h.taskService.GetOverallStats(since)
+	if err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+	response.Success(c, stats)
+}
+
+func (h *TaskHandler) GetTaskStats(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid task ID")
+		return
+	}
+
+	stats, err := h.taskService.GetTaskStats(uint(id))
+	if err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+	response.Success(c, stats)
 }

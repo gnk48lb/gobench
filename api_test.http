@@ -416,3 +416,18 @@ Content-Type: application/json
 ### 超过 10 次后，服务器将返回 HTTP 429 Too Many Requests 错误，包含 JSON:
 ### { "code": 429, "msg": "too many requests" }
 ### ===================================================================
+
+### ===================================================================
+### 统计监控 API (Phase 3)
+### ===================================================================
+
+### 30. 获取整体执行统计数据 (最近24小时内的任务总数、成功率、平均耗时等)
+GET http://localhost:8080/api/v1/stats
+Authorization: Bearer {{token}}
+
+###
+
+### 31. 获取单个任务的执行统计数据
+### 默认获取任务 1 的统计数据，可修改 ID
+GET http://localhost:8080/api/v1/tasks/1/stats
+Authorization: Bearer {{token}}

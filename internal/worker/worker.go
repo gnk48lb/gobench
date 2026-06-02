@@ -11,6 +11,7 @@ import (
 	"gobench/internal/queue"
 	"gobench/internal/repository"
 	"gobench/pkg/config"
+	"gobench/pkg/event"
 	"gobench/pkg/logger"
 	pkgredis "gobench/pkg/redis"
 
@@ -27,9 +28,10 @@ type Worker struct {
 	concurrency int
 	wg          sync.WaitGroup
 	workerID    string
+	bus         *event.Bus
 }
 
-func NewWorker(q *queue.Queue, taskRepo repository.TaskRepository, logRepo repository.TaskLogRepository) *Worker {
+func NewWorker(q *queue.Queue, taskRepo repository.TaskRepository, logRepo repository.TaskLogRepository, bus *event.Bus) *Worker {
 	concurrency := 5
 	if config.AppConfig != nil && config.AppConfig.Worker.Concurrency > 0 {
 		concurrency = config.AppConfig.Worker.Concurrency
@@ -42,6 +44,7 @@ func NewWorker(q *queue.Queue, taskRepo repository.TaskRepository, logRepo repos
 		stopCh:      make(chan struct{}),
 		concurrency: concurrency,
 		workerID:    uuid.New().String(),
+		bus:         bus,
 	}
 }
 
@@ -132,6 +135,14 @@ func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *
 		return
 	}
 
+	w.bus.Publish(event.Event{
+		Type:     event.TypeLogUpdate,
+		TaskID:   msg.TaskID,
+		LogID:    msg.LogID,
+		Status:   "running",
+		WorkerID: w.workerID,
+	})
+
 	// Create execution context with timeout
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Timeout)*time.Second)
 	defer cancel()
@@ -145,6 +156,16 @@ func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *
 	if err != nil {
 		// Update as failed
 		w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "failed", output, err.Error(), nil, &finishedAt, durationMs)
+
+		w.bus.Publish(event.Event{
+			Type:       event.TypeLogUpdate,
+			TaskID:     msg.TaskID,
+			LogID:      msg.LogID,
+			Status:     "failed",
+			ErrorMsg:   err.Error(),
+			DurationMs: durationMs,
+			WorkerID:   w.workerID,
+		})
 
 		// Retry logic
 		if msg.RetryNum < task.RetryCount {
@@ -174,6 +195,16 @@ func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *
 
 	// Update as success
 	w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "success", output, "", nil, &finishedAt, durationMs)
+
+	w.bus.Publish(event.Event{
+		Type:       event.TypeLogUpdate,
+		TaskID:     msg.TaskID,
+		LogID:      msg.LogID,
+		Status:     "success",
+		Output:     output,
+		DurationMs: durationMs,
+		WorkerID:   w.workerID,
+	})
 }
 
 func (w *Worker) Stop() {
