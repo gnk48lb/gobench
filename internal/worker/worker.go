@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"gobench/pkg/config"
 	"gobench/pkg/event"
 	"gobench/pkg/logger"
-	pkgredis "gobench/pkg/redis"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -105,29 +103,17 @@ func (w *Worker) loop(workerIndex int) {
 				continue
 			}
 
-			// 3. Distributed lock to prevent split-brain with dynamic timeout
-			lockKey := fmt.Sprintf("gobench:lock:task:%d", msg.TaskID)
-			lockTimeout := time.Duration(task.Timeout+10) * time.Second
-			acquired, err := pkgredis.AcquireLock(ctx, pkgredis.Client, lockKey, w.workerID, lockTimeout)
-			if err != nil {
-				logger.Log.Error("Failed to acquire lock", zap.Error(err), zap.Uint("task_id", msg.TaskID))
-				continue
-			}
-			if !acquired {
-				logger.Log.Info("Lock not acquired, task handled by another worker", zap.Uint("task_id", msg.TaskID))
-				continue
-			}
-
-			// 4. Guarantee lock release and process task
-			w.processTask(ctx, msg, task, lockKey)
+			// 3. Process task
+			// BRPOP 是原子操作，消息出队的瞬间就从 Redis 里消失，
+			// 不可能被其他 worker 重复消费。此处加锁不仅多余，而且在锁竞争失败时
+			// 会导致已出队的消息永久丢失。防重复触发的分布式锁应在 scheduler.go 的
+			// cron 定时器里使用（那里多实例确实会同时触发），worker 消费队列不需要。
+			w.processTask(ctx, msg, task)
 		}
 	}
 }
 
-func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *model.Task, lockKey string) {
-	// Defer lock release
-	defer pkgredis.ReleaseLock(ctx, pkgredis.Client, lockKey, w.workerID)
-
+func (w *Worker) processTask(ctx context.Context, msg *queue.TaskMessage, task *model.Task) {
 	now := time.Now()
 	// Update status to running
 	if err := w.logRepo.UpdateStatus(msg.LogID, w.workerID, msg.RetryNum, "running", "", "", &now, nil, 0); err != nil {

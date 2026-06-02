@@ -1,9 +1,9 @@
 server:
   port: 8080
 mysql:
-  dsn: "root:8964@tcp(localhost:8964)/gobench?charset=utf8mb4&parseTime=True&loc=Local"
+  dsn: ""
 jwt:
-  secret: "super-secret-key-change-in-prod"
+  secret: ""
 redis:
   addr: "localhost:6379"
   password: ""

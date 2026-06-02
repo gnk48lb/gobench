@@ -1,11 +1,12 @@
 package service
 
 import (
-	"errors"
-	"golang.org/x/crypto/bcrypt"
 	"gobench/internal/model"
 	"gobench/internal/repository"
+	"gobench/pkg/apperrors"
 	"gobench/pkg/jwt"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService interface {
@@ -28,7 +29,7 @@ func (s *authService) Register(username, password string) error {
 		return err
 	}
 	if existingUser != nil {
-		return errors.New("username already exists")
+		return apperrors.ErrUsernameExists
 	}
 
 	// Hash password
@@ -54,13 +55,13 @@ func (s *authService) Login(username, password string) (string, error) {
 		return "", err
 	}
 	if user == nil {
-		return "", errors.New("invalid username or password")
+		return "", apperrors.ErrInvalidCredentials
 	}
 
 	// Verify password
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return "", errors.New("invalid username or password")
+		return "", apperrors.ErrInvalidCredentials
 	}
 
 	// Generate JWT

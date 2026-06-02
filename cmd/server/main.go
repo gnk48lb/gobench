@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
 	"gobench/internal/handler"
@@ -28,6 +29,9 @@ import (
 )
 
 func main() {
+	// 开发环境加载 .env 文件，生产环境忽略此步骤（文件不存在时自动跳过）
+	_ = godotenv.Load()
+
 	// 1. Init logger
 	if err := logger.Init(); err != nil {
 		fmt.Printf("Failed to initialize logger: %v\n", err)

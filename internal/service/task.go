@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gobench/internal/model"
 	"gobench/internal/queue"
 	"gobench/internal/repository"
+	"gobench/pkg/apperrors"
 )
 
 type TaskService interface {
@@ -48,7 +50,7 @@ func (s *taskService) GetTask(id uint) (*model.Task, error) {
 		return nil, err
 	}
 	if task == nil {
-		return nil, errors.New("task not found")
+		return nil, apperrors.ErrTaskNotFound
 	}
 	return task, nil
 }
@@ -113,8 +115,10 @@ func (s *taskService) TriggerTask(taskID uint) (*model.TaskLog, error) {
 		LogID:  taskLog.ID,
 	}
 	if err := s.q.Push(context.Background(), msg); err != nil {
-		// Log creation succeeded but queue failed, status remains pending
-		return nil, errors.New("failed to enqueue task")
+		// 补偿：入队失败时把日志标记为 failed，避免产生永久 pending 的孤儿记录
+		now := time.Now()
+		_ = s.logRepo.UpdateStatus(taskLog.ID, "", 0, "failed", "", "failed to enqueue: "+err.Error(), &now, &now, 0)
+		return nil, fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
 	return taskLog, nil

@@ -17,6 +17,11 @@ import (
 	"gobench/internal/model"
 )
 
+// defaultHTTPClient 是复用的 HTTP 客户端，利用其内置的连接池避免重复建立 TCP 连接
+var defaultHTTPClient = &http.Client{
+	Timeout: 30 * time.Second, // 兜底超时，task.Timeout 对应的 context 才是真正的执行超时
+}
+
 // ExecuteTask routes execution to the correct handler based on task_type.
 func ExecuteTask(ctx context.Context, task *model.Task) (string, error) {
 	switch task.TaskType {
@@ -148,7 +153,7 @@ func executeHTTP(ctx context.Context, payloadStr string) (string, error) {
 	}
 
 	start := time.Now()
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := defaultHTTPClient.Do(req)
 	latency := time.Since(start)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
@@ -218,9 +223,9 @@ func executeBatchPing(ctx context.Context, payloadStr string) (string, error) {
 
 	// One shared client. Its Timeout caps each individual request; the outer
 	// context (from task.Timeout) caps the whole batch.
-	client := &http.Client{
-		Timeout: time.Duration(p.TimeoutSeconds) * time.Second,
-	}
+	// client := &http.Client{
+	// 	Timeout: time.Duration(p.TimeoutSeconds) * time.Second,
+	// }
 
 	wallStart := time.Now()
 
@@ -230,7 +235,9 @@ func executeBatchPing(ctx context.Context, payloadStr string) (string, error) {
 		go func(idx int, target string) {
 			defer wg.Done()
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+			reqCtx, reqCancel := context.WithTimeout(ctx, time.Duration(p.TimeoutSeconds)*time.Second)
+			defer reqCancel()
+			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, target, nil)
 			if err != nil {
 				results[idx] = pingResult{url: target, errMsg: err.Error()}
 				return
@@ -238,7 +245,7 @@ func executeBatchPing(ctx context.Context, payloadStr string) (string, error) {
 			req.Header.Set("User-Agent", "GoBench-Ping/1.0")
 
 			t0 := time.Now()
-			resp, err := client.Do(req)
+			resp, err := defaultHTTPClient.Do(req)
 			lat := time.Since(t0).Milliseconds()
 
 			if err != nil {

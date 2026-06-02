@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"gobench/internal/model"
 	"gobench/internal/scheduler"
 	"gobench/internal/service"
+	"gobench/pkg/apperrors"
 	"gobench/pkg/response"
 )
 
@@ -21,11 +23,41 @@ func NewTaskHandler(taskService service.TaskService, sched *scheduler.Scheduler)
 	return &TaskHandler{taskService: taskService, scheduler: sched}
 }
 
+type CreateTaskRequest struct {
+	Name       string `json:"name" binding:"required,min=1,max=100"`
+	TaskType   string `json:"task_type" binding:"required,oneof=http shell function"`
+	CronExpr   string `json:"cron_expr"`
+	Payload    string `json:"payload"`
+	RetryCount int    `json:"retry_count" binding:"min=0,max=10"`
+	Timeout    int    `json:"timeout" binding:"min=1,max=3600"`
+	Status     string `json:"status"`
+}
+
+type UpdateTaskRequest struct {
+	Name       string `json:"name" binding:"required,min=1,max=100"`
+	TaskType   string `json:"task_type" binding:"required,oneof=http shell function"`
+	CronExpr   string `json:"cron_expr"`
+	Payload    string `json:"payload"`
+	RetryCount int    `json:"retry_count" binding:"min=0,max=10"`
+	Timeout    int    `json:"timeout" binding:"min=1,max=3600"`
+	Status     string `json:"status" binding:"omitempty,oneof=active paused deleted"`
+}
+
 func (h *TaskHandler) Create(c *gin.Context) {
-	var task model.Task
-	if err := c.ShouldBindJSON(&task); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body")
+	var req CreateTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	task := model.Task{
+		Name:       req.Name,
+		TaskType:   req.TaskType,
+		CronExpr:   req.CronExpr,
+		Payload:    req.Payload,
+		RetryCount: req.RetryCount,
+		Timeout:    req.Timeout,
+		Status:     "active",
 	}
 
 	// Get user ID from context (set by AuthMiddleware)
@@ -55,7 +87,11 @@ func (h *TaskHandler) Get(c *gin.Context) {
 
 	task, err := h.taskService.GetTask(uint(id))
 	if err != nil {
-		response.Error(c, 404, err.Error())
+		if errors.Is(err, apperrors.ErrTaskNotFound) {
+			response.Error(c, http.StatusNotFound, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -91,10 +127,20 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var task model.Task
-	if err := c.ShouldBindJSON(&task); err != nil {
-		response.Error(c, http.StatusBadRequest, "invalid request body")
+	var req UpdateTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	task := model.Task{
+		Name:       req.Name,
+		TaskType:   req.TaskType,
+		CronExpr:   req.CronExpr,
+		Payload:    req.Payload,
+		RetryCount: req.RetryCount,
+		Timeout:    req.Timeout,
+		Status:     req.Status,
 	}
 	task.ID = uint(id)
 

@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gobench/internal/service"
+	"gobench/pkg/apperrors"
 	"gobench/pkg/response"
 )
 
@@ -30,7 +32,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	err := h.authService.Register(req.Username, req.Password)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		if errors.Is(err, apperrors.ErrUsernameExists) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
