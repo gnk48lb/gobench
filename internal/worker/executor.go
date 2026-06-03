@@ -223,9 +223,6 @@ func executeBatchPing(ctx context.Context, payloadStr string) (string, error) {
 
 	// One shared client. Its Timeout caps each individual request; the outer
 	// context (from task.Timeout) caps the whole batch.
-	// client := &http.Client{
-	// 	Timeout: time.Duration(p.TimeoutSeconds) * time.Second,
-	// }
 
 	wallStart := time.Now()
 

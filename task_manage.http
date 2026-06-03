@@ -56,7 +56,7 @@ Accept: application/json
 
 ### 获取该任务的执行历史日志列表 (带分页)
 ### (可以观察状态从 pending -> running -> success 变化，以及对应的 WorkerID)
-GET http://localhost:8080/api/v1/tasks/4/logs?page=1&page_size=10
+GET http://localhost:8080/api/v1/tasks/10/logs?page=1&page_size=10
 Authorization: Bearer {{token}}
 Accept: application/json
 
@@ -86,6 +86,21 @@ Content-Type: application/json
 }
 
 ###
+PUT http://localhost:8080/api/v1/tasks/11
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "高频打印测试",
+    "task_type": "shell",
+    "cron_expr": "*/5 * * * * *",
+    "payload": "{\"command\": \"echo 'Cron job triggered at: '$(date)\"}",
+    "retry_count": 0,
+    "timeout": 5,
+    "status": "paused"
+}
+
+###
 
 ### 删除任务 (如需测试，可对任务 2 执行 logic 删除)
 DELETE http://localhost:8080/api/v1/tasks/2
@@ -100,6 +115,21 @@ Content-Type: application/json
 {
     "delay_seconds": 10
 }
+
+
+### ===================================================================
+### 阶段三：统计监控 API 测试
+### ===================================================================
+
+### 1. 获取全局执行统计数据 (最近24小时)
+GET http://localhost:8080/api/v1/stats
+Authorization: Bearer {{token}}
+
+###
+
+### 2. 获取单个任务的执行统计数据 (假设任务 ID 为 1)
+GET http://localhost:8080/api/v1/tasks/1/stats
+Authorization: Bearer {{token}}
 
 
 ### ===================================================================

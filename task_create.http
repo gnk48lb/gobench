@@ -257,3 +257,18 @@ Content-Type: application/json
 ###
 ### 注意 Wall clock 约等于 5s（超时时间），而不是 20 * 平均延迟
 ### 这就是 goroutine 并发的实际效果
+
+
+### 创建高频定时任务 (每 5 秒执行一次，测试 Cron 和 WebSocket)
+POST http://localhost:8080/api/v1/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+    "name": "高频打印测试",
+    "task_type": "shell",
+    "cron_expr": "*/5 * * * * *",
+    "payload": "{\"command\": \"echo 'Cron job triggered at: '$(date)\"}",
+    "retry_count": 0,
+    "timeout": 5
+}

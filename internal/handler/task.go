@@ -68,7 +68,7 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	}
 
 	if err := h.taskService.CreateTask(&task); err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *TaskHandler) List(c *gin.Context) {
 
 	tasks, total, err := h.taskService.ListTasks(page, pageSize)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -145,7 +145,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	task.ID = uint(id)
 
 	if err := h.taskService.UpdateTask(&task); err != nil {
-		response.Error(c, 500, err.Error())
+		if errors.Is(err, apperrors.ErrTaskNotFound) {
+			response.Error(c, http.StatusNotFound, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -165,7 +169,11 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 	}
 
 	if err := h.taskService.DeleteTask(uint(id)); err != nil {
-		response.Error(c, 500, err.Error())
+		if errors.Is(err, apperrors.ErrTaskNotFound) {
+			response.Error(c, http.StatusNotFound, err.Error())
+			return
+		}
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -184,7 +192,7 @@ func (h *TaskHandler) Trigger(c *gin.Context) {
 
 	taskLog, err := h.taskService.TriggerTask(uint(id))
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -209,7 +217,7 @@ func (h *TaskHandler) ListLogs(c *gin.Context) {
 
 	logs, total, err := h.taskService.GetTaskLogs(uint(id), page, pageSize)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -239,7 +247,7 @@ func (h *TaskHandler) Schedule(c *gin.Context) {
 
 	taskLog, err := h.taskService.ScheduleTask(uint(id), req.DelaySeconds)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -250,7 +258,7 @@ func (h *TaskHandler) GetStats(c *gin.Context) {
 	since := time.Now().Add(-24 * time.Hour)
 	stats, err := h.taskService.GetOverallStats(since)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response.Success(c, stats)
@@ -266,7 +274,7 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 
 	stats, err := h.taskService.GetTaskStats(uint(id))
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		response.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response.Success(c, stats)

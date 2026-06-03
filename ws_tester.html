@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>GoBench 实时日志监控</title>
+    <style>
+        body { background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', Courier, monospace; padding: 20px; }
+        #controls { margin-bottom: 20px; background: #2d2d2d; padding: 15px; border-radius: 5px; }
+        input { background: #333; color: white; border: 1px solid #555; padding: 5px; margin-right: 10px; }
+        button { background: #007acc; color: white; border: none; padding: 6px 15px; cursor: pointer; border-radius: 3px; }
+        button:hover { background: #005999; }
+        #terminal { background-color: #000; border: 1px solid #333; height: 500px; overflow-y: auto; padding: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .log-entry { margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+        .status-pending { color: #f1c40f; }
+        .status-running { color: #3498db; }
+        .status-success { color: #2ecc71; font-weight: bold;}
+        .status-failed { color: #e74c3c; font-weight: bold;}
+        .time { color: #888; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h2>🚀 GoBench WebSocket 监控台</h2>
+    
+    <div id="controls">
+        <label>Task ID:</label>
+        <input type="number" id="taskId" value="1" style="width: 50px;">
+        <label>Token (从 .http 登录接口复制):</label>
+        <input type="text" id="token" placeholder="eyJhbGci..." style="width: 300px;">
+        <button onclick="connectWS()">连接 WebSocket</button>
+        <button onclick="disconnectWS()" style="background:#e74c3c;">断开</button>
+    </div>
+
+    <div id="terminal">
+        <div style="color: #888;">// 等待连接...</div>
+    </div>
+
+    <script>
+        let ws = null;
+        function connectWS() {
+            const taskId = document.getElementById('taskId').value;
+            const token = document.getElementById('token').value;
+            const terminal = document.getElementById('terminal');
+
+            if (!token) { alert("请先填写 Token！"); return; }
+            if (ws) { ws.close(); }
+
+            terminal.innerHTML = `<div style="color: #888;">// 正在连接 Task ${taskId}...</div>`;
+            ws = new WebSocket(`ws://localhost:8080/api/v1/ws/tasks/${taskId}/logs?token=${token}`);
+
+            ws.onopen = () => terminal.innerHTML += `<div style="color: #00ff00;">// 连接成功！等待事件推送...</div>`;
+            
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                const time = new Date().toLocaleTimeString();
+                let content = data.output || data.error_msg || "...";
+                
+                // 将换行符转换为 <br> 以便在 HTML 中正确显示终端换行
+                content = content.replace(/\n/g, '<br>');
+
+                const logHtml = `
+                    <div class="log-entry">
+                        <span class="time">[${time}]</span> 
+                        <span class="status-${data.status}">[${data.status.toUpperCase()}]</span> 
+                        Worker: ${data.worker_id} ${data.duration_ms ? `| 耗时: ${data.duration_ms}ms` : ''} <br>
+                        <span style="color: #ccc;">${content}</span>
+                    </div>`;
+                
+                terminal.innerHTML += logHtml;
+                terminal.scrollTop = terminal.scrollHeight; // 自动滚动到底部
+            };
+
+            ws.onerror = (e) => terminal.innerHTML += `<div class="status-failed">// WebSocket 发生错误</div>`;
+            ws.onclose = () => terminal.innerHTML += `<div style="color: #888;">// 连接已断开</div>`;
+        }
+
+        function disconnectWS() { if (ws) ws.close(); }
+    </script>
+</body>
+</html>

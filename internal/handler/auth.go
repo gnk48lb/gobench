@@ -61,7 +61,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	token, err := h.authService.Login(req.Username, req.Password)
 	if err != nil {
-		response.Error(c, 401, err.Error())
+		response.Error(c, http.StatusUnauthorized, err.Error())
 		return
 	}
 

@@ -63,9 +63,9 @@ func (s *Scheduler) RegisterTask(task *model.Task) error {
 	taskName := task.Name
 	entryID, err := s.c.AddFunc(task.CronExpr, func() {
 		// 尝试抢分布式锁，防止多实例重复触发
-		lockKey := fmt.Sprintf("gobench:cron:fire:%d:%d", taskID, time.Now().Unix()/60)
+		lockKey := fmt.Sprintf("gobench:cron:fire:%d:%d", taskID, time.Now().Unix())
 		acquired, err := redispkg.AcquireLock(
-			context.Background(), redispkg.Client, lockKey, "1", 50*time.Second,
+			context.Background(), redispkg.Client, lockKey, "1", 2*time.Second,
 		)
 		if err != nil || !acquired {
 			return // 其他实例已经触发了
