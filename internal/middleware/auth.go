@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"gobench/pkg/jwt"
 	"gobench/pkg/response"
+
+	"github.com/gin-gonic/gin"
 )
 
 func AuthMiddleware() gin.HandlerFunc {
@@ -17,7 +18,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-
+		// Authorization: Bearer {{token}}
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			response.ErrorWithStatus(c, http.StatusUnauthorized, 401, "authorization header format must be Bearer {token}")

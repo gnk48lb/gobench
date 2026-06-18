@@ -1,16 +1,20 @@
 package service
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"gobench/internal/model"
-	"gobench/internal/queue"
 	"gobench/internal/repository"
 	"gobench/pkg/apperrors"
 )
+
+// TaskExecutor 是 taskService 依赖的执行器接口，由 grpcclient.ExecutorClient 实现
+type TaskExecutor interface {
+	TriggerTask(taskID uint) (uint, error)
+	ScheduleTask(taskID uint, delaySeconds int) (uint, error)
+}
 
 type TaskService interface {
 	CreateTask(task *model.Task) error
@@ -28,14 +32,18 @@ type TaskService interface {
 type taskService struct {
 	taskRepo repository.TaskRepository
 	logRepo  repository.TaskLogRepository
-	q        *queue.Queue
+	executor TaskExecutor
 }
 
-func NewTaskService(taskRepo repository.TaskRepository, logRepo repository.TaskLogRepository, q *queue.Queue) TaskService {
+func NewTaskService(
+	taskRepo repository.TaskRepository,
+	logRepo repository.TaskLogRepository,
+	executor TaskExecutor,
+) TaskService {
 	return &taskService{
 		taskRepo: taskRepo,
 		logRepo:  logRepo,
-		q:        q,
+		executor: executor,
 	}
 }
 
@@ -94,34 +102,23 @@ func (s *taskService) DeleteTask(id uint) error {
 }
 
 func (s *taskService) TriggerTask(taskID uint) (*model.TaskLog, error) {
-	// 1. Validate task exists
+	// 仍在 api-service 侧验证 task 存在，executor 信任传入的 task_id
 	_, err := s.GetTask(taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Create pending log
-	taskLog := &model.TaskLog{
-		TaskID: taskID,
-		Status: "pending",
-	}
-	if err := s.logRepo.Create(taskLog); err != nil {
+	logID, err := s.executor.TriggerTask(taskID)
+	if err != nil {
 		return nil, err
 	}
 
-	// 3. Push to queue
-	msg := queue.TaskMessage{
+	// 返回最小化 TaskLog，handler 层只需 log.ID，不需要完整记录
+	return &model.TaskLog{
+		Model:  gorm.Model{ID: logID},
 		TaskID: taskID,
-		LogID:  taskLog.ID,
-	}
-	if err := s.q.Push(context.Background(), msg); err != nil {
-		// 补偿：入队失败时把日志标记为 failed，避免产生永久 pending 的孤儿记录
-		now := time.Now()
-		_ = s.logRepo.UpdateStatus(taskLog.ID, "", 0, "failed", "", "failed to enqueue: "+err.Error(), &now, &now, 0)
-		return nil, fmt.Errorf("failed to enqueue task: %w", err)
-	}
-
-	return taskLog, nil
+		Status: "pending",
+	}, nil
 }
 
 func (s *taskService) GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error) {
@@ -135,32 +132,21 @@ func (s *taskService) GetTaskLogs(taskID uint, page, pageSize int) ([]*model.Tas
 }
 
 func (s *taskService) ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLog, error) {
-	// 1. Validate task exists
 	_, err := s.GetTask(taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Create pending log
-	taskLog := &model.TaskLog{
-		TaskID: taskID,
-		Status: "pending", // Scheduled tasks are also pending until worker picks them up
-	}
-	if err := s.logRepo.Create(taskLog); err != nil {
+	logID, err := s.executor.ScheduleTask(taskID, delaySeconds)
+	if err != nil {
 		return nil, err
 	}
 
-	// 3. Push to delayed queue
-	msg := queue.TaskMessage{
+	return &model.TaskLog{
+		Model:  gorm.Model{ID: logID},
 		TaskID: taskID,
-		LogID:  taskLog.ID,
-	}
-	runAt := time.Now().Add(time.Duration(delaySeconds) * time.Second)
-	if err := s.q.PushDelayed(context.Background(), msg, runAt); err != nil {
-		return nil, errors.New("failed to schedule task")
-	}
-
-	return taskLog, nil
+		Status: "pending",
+	}, nil
 }
 
 func (s *taskService) GetOverallStats(since time.Time) (*repository.OverallStats, error) {

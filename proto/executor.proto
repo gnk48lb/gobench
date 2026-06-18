@@ -1,0 +1,48 @@
+syntax = "proto3";
+package executor;
+option go_package = "gobench/pb/executor";
+
+service ExecutorService {
+  // Unary: 立即触发任务，返回 log_id
+  rpc TriggerTask(TriggerTaskRequest) returns (TriggerTaskResponse);
+
+  // Unary: 延迟调度任务，返回 log_id
+  rpc ScheduleTask(ScheduleTaskRequest) returns (ScheduleTaskResponse);
+
+  // Server-side streaming: 订阅任务执行事件
+  rpc StreamTaskEvents(StreamRequest) returns (stream TaskEvent);
+}
+
+message TriggerTaskRequest {
+  uint32 task_id = 1;
+}
+
+message TriggerTaskResponse {
+  uint32 log_id = 1;
+  string status  = 2;
+}
+
+message ScheduleTaskRequest {
+  uint32 task_id       = 1;
+  int32  delay_seconds = 2;
+}
+
+message ScheduleTaskResponse {
+  uint32 log_id = 1;
+  string status  = 2;
+}
+
+message StreamRequest {
+  uint32 task_id = 1;
+}
+
+message TaskEvent {
+  string type        = 1;
+  uint32 task_id     = 2;
+  uint32 log_id      = 3;
+  string status      = 4;
+  string worker_id   = 5;
+  string output      = 6;
+  string error_msg   = 7;
+  int64  duration_ms = 8;
+}

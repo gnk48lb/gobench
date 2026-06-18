@@ -17,15 +17,14 @@ import (
 	"gobench/internal/handler"
 	"gobench/internal/middleware"
 	"gobench/internal/repository"
-	"gobench/internal/service"
-	"gobench/internal/queue"
 	"gobench/internal/scheduler"
-	"gobench/internal/worker"
+	"gobench/internal/service"
 	"gobench/pkg/config"
 	"gobench/pkg/database"
-	"gobench/pkg/event"
+	"gobench/pkg/grpcclient"
 	"gobench/pkg/logger"
 	"gobench/pkg/redis"
+	"gobench/pkg/tracing"
 )
 
 func main() {
@@ -39,7 +38,7 @@ func main() {
 	}
 	defer logger.Sync()
 
-	logger.Log.Info("Starting GoBench server...")
+	logger.Log.Info("Starting api-service...")
 
 	// 2. Init config
 	if err := config.Init("config/config.yaml"); err != nil {
@@ -58,37 +57,51 @@ func main() {
 	}
 	logger.Log.Info("Connected to Redis successfully")
 
-	// 5. Dependency Injection
+	// 5. Init tracing（可选，Jaeger 未启动时只打 warn 日志，不影响主服务）
+	if config.AppConfig.Tracing.Enabled {
+		shutdown, err := tracing.Init(
+			context.Background(),
+			config.AppConfig.Tracing.ServiceName,
+			config.AppConfig.Tracing.OTLPEndpoint,
+		)
+		if err != nil {
+			logger.Log.Warn("Failed to init tracing, continuing without it", zap.Error(err))
+		} else {
+			defer shutdown(context.Background())
+			logger.Log.Info("Tracing initialized")
+		}
+	}
+
+	// 6. 连接 executor-service（gRPC 客户端）
+	executorClient, err := grpcclient.NewExecutorClient(config.AppConfig.Executor.Addr)
+	if err != nil {
+		logger.Log.Fatal("Failed to connect to executor-service", zap.Error(err))
+	}
+	defer executorClient.Close()
+	logger.Log.Info("Connected to executor-service", zap.String("addr", config.AppConfig.Executor.Addr))
+
+	// 7. Dependency Injection
 	userRepo := repository.NewUserRepository()
 	taskRepo := repository.NewTaskRepository()
 	logRepo := repository.NewTaskLogRepository()
-	taskQueue := queue.NewQueue(redis.Client, config.AppConfig.Worker.QueueKey)
 
-	// 6. 事件总线
-	eventBus := event.NewBus()
+	// 8. TaskService（通过 gRPC 调用 executor-service）
+	taskSvc := service.NewTaskService(taskRepo, logRepo, executorClient)
 
-	// 7. TaskService
-	taskSvc := service.NewTaskService(taskRepo, logRepo, taskQueue)
-
-	// 8. Cron 调度器
+	// 9. Cron 调度器
 	sched := scheduler.NewScheduler(taskSvc)
 
-	// 9. 启动时加载所有 active 任务到调度器
+	// 10. 启动时加载所有 active 任务到调度器
 	activeTasks, _, _ := taskSvc.ListTasks(1, 1000)
 	sched.LoadActiveTasks(activeTasks)
 	sched.Start()
 	defer sched.Stop()
 
-	// 10. Worker（传入事件总线）
-	taskWorker := worker.NewWorker(taskQueue, taskRepo, logRepo, eventBus)
-	taskWorker.Start()
-	defer taskWorker.Stop()
-
 	// 11. Handlers
 	authSvc := service.NewAuthService(userRepo)
 	authHdl := handler.NewAuthHandler(authSvc)
 	taskHdl := handler.NewTaskHandler(taskSvc, sched)
-	wsHdl := handler.NewWSHandler(eventBus)
+	wsHdl := handler.NewWSHandler(executorClient)
 
 	// 12. Init Gin router & Routes
 	router := gin.Default()
@@ -143,7 +156,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	logger.Log.Info("Shutting down server...")
+	logger.Log.Info("Shutting down api-service...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -152,5 +165,5 @@ func main() {
 		logger.Log.Fatal("Server forced to shutdown:", zap.Error(err))
 	}
 
-	logger.Log.Info("Server exiting")
+	logger.Log.Info("api-service exited")
 }

@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: gobench123
+      MYSQL_DATABASE: gobench
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"   # Web UI
+      - "4317:4317"     # OTLP gRPC（直接接收，不需要 agent）
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  executor-service:
+    build:
+      context: .
+      args:
+        CMD_PATH: cmd/executor-service
+    environment:
+      MYSQL_DSN: root:gobench123@tcp(mysql:3306)/gobench?charset=utf8mb4&parseTime=True&loc=Local
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: dev-secret-change-in-prod
+      WORKER_CONCURRENCY: "5"
+      TRACING_ENABLED: "true"
+      TRACING_OTLP_ENDPOINT: "jaeger:4317"
+      TRACING_SERVICE_NAME: "executor-service"
+    ports:
+      - "9000:9000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+
+  api-service:
+    build:
+      context: .
+      args:
+        CMD_PATH: cmd/api-service
+    environment:
+      MYSQL_DSN: root:gobench123@tcp(mysql:3306)/gobench?charset=utf8mb4&parseTime=True&loc=Local
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: dev-secret-change-in-prod
+      SERVER_PORT: "8080"
+      EXECUTOR_ADDR: "executor-service:9000"
+      TRACING_ENABLED: "true"
+      TRACING_OTLP_ENDPOINT: "jaeger:4317"
+      TRACING_SERVICE_NAME: "api-service"
+    ports:
+      - "8080:8080"
+    depends_on:
+      executor-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

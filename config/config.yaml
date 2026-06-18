@@ -11,3 +11,11 @@ redis:
 worker:
   queue_key: "gobench:task:queue"
   concurrency: 5
+
+executor:
+  addr: "localhost:9000"
+
+tracing:
+  enabled: false
+  otlp_endpoint: "localhost:4317"
+  service_name: "api-service"

@@ -1,13 +1,14 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gobench/pkg/event"
+	"gobench/pkg/grpcclient"
 	"gobench/pkg/jwt"
 	"gobench/pkg/response"
 )
@@ -21,11 +22,11 @@ var upgrader = websocket.Upgrader{
 }
 
 type WSHandler struct {
-	bus *event.Bus
+	executorClient *grpcclient.ExecutorClient
 }
 
-func NewWSHandler(bus *event.Bus) *WSHandler {
-	return &WSHandler{bus: bus}
+func NewWSHandler(client *grpcclient.ExecutorClient) *WSHandler {
+	return &WSHandler{executorClient: client}
 }
 
 // ServeTaskLogs 升级为 WebSocket，实时推送指定任务的执行日志变更
@@ -37,8 +38,7 @@ func (h *WSHandler) ServeTaskLogs(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, "token required")
 		return
 	}
-	_, err := jwt.ParseToken(tokenStr)
-	if err != nil {
+	if _, err := jwt.ParseToken(tokenStr); err != nil {
 		response.Error(c, http.StatusUnauthorized, "invalid token")
 		return
 	}
@@ -55,16 +55,21 @@ func (h *WSHandler) ServeTaskLogs(c *gin.Context) {
 	// 3. 升级为 WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		// Upgrade 失败时 gorilla 会自动写 HTTP 错误，不需要额外处理
 		return
 	}
 	defer conn.Close()
 
-	// 4. 订阅事件总线
-	eventCh := h.bus.Subscribe(taskID, 16)
-	defer h.bus.Unsubscribe(taskID, eventCh)
+	// 4. 创建可取消的 context：WebSocket 断开时取消，gRPC stream 随之结束
+	streamCtx, cancelStream := context.WithCancel(context.Background())
+	defer cancelStream()
 
-	// 5. 启动 read goroutine（处理客户端发来的 ping/关闭消息）
+	// 5. 订阅 executor gRPC 事件流（pb 转换在 grpcclient 内部完成，这里得到的是 event.Event channel）
+	eventCh, err := h.executorClient.SubscribeTaskEvents(streamCtx, taskID)
+	if err != nil {
+		return
+	}
+
+	// 6. 启动 read goroutine（处理客户端 ping/close）
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -75,26 +80,26 @@ func (h *WSHandler) ServeTaskLogs(c *gin.Context) {
 			return nil
 		})
 		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				return // 客户端断开或错误，退出
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
 			}
 		}
 	}()
 
-	// 6. Ping ticker，每 30s 发一次 ping 检测连接活跃
+	// 7. Ping ticker
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	// 7. write loop：转发事件 + 心跳
+	// 8. write loop：转发事件 + 心跳
 	for {
 		select {
 		case <-done:
-			return // 客户端断开
+			cancelStream() // 通知 gRPC stream 退出
+			return
 
 		case e, ok := <-eventCh:
 			if !ok {
-				return // channel 被关闭
+				return // gRPC stream 结束（executor 关闭或 ctx 取消）
 			}
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteJSON(e); err != nil {
