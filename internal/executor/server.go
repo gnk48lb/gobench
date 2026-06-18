@@ -75,6 +75,9 @@ func (s *ExecutorServer) ScheduleTask(ctx context.Context, req *pb.ScheduleTaskR
 	}
 	runAt := time.Now().Add(time.Duration(req.DelaySeconds) * time.Second)
 	if err := s.queue.PushDelayed(ctx, msg, runAt); err != nil {
+		now := time.Now()
+		_ = s.logRepo.UpdateStatus(taskLog.ID, "", 0, "failed", "",
+			"failed to schedule: "+err.Error(), &now, &now, 0)
 		return nil, status.Errorf(codes.Internal, "schedule: %v", err)
 	}
 

@@ -7,6 +7,7 @@ import (
 	pb "gobench/pb/executor"
 	"gobench/pkg/event"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -19,6 +20,7 @@ type ExecutorClient struct {
 func NewExecutorClient(addr string) (*ExecutorClient, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("connect executor-service %s: %w", addr, err)

@@ -36,5 +36,9 @@ func Init(ctx context.Context, serviceName, otlpEndpoint string) (func(context.C
 		)),
 	)
 	otel.SetTracerProvider(tp)
-	return tp.Shutdown, nil
+	return func(c context.Context) error {
+		err := tp.Shutdown(c)
+		_ = conn.Close()
+		return err
+	}, nil
 }
