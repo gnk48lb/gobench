@@ -235,7 +235,7 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-    "name": "国内站点可用性检测",
+    "name": "国内站点可用性检测-1",
     "task_type": "function",
     "cron_expr": "*/30 * * * *",
     "payload": "{\"function\": \"batch_ping\", \"urls\": [\"https://www.baidu.com\", \"https://www.bilibili.com\", \"https://www.zhihu.com\", \"https://www.taobao.com\", \"https://www.jd.com\", \"https://www.weibo.com\", \"https://www.douban.com\", \"https://music.163.com\"], \"timeout_seconds\": 3}",
@@ -265,9 +265,9 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-    "name": "高频打印测试",
+    "name": "高频打印测试1",
     "task_type": "shell",
-    "cron_expr": "*/5 * * * * *",
+    "cron_expr": "*/10 * * * * *",
     "payload": "{\"command\": \"echo 'Cron job triggered at: '$(date)\"}",
     "retry_count": 0,
     "timeout": 5

@@ -16,6 +16,6 @@ executor:
   addr: "localhost:9000"
 
 tracing:
-  enabled: false
+  enabled: false      # 本地调试先关掉，跑通 gRPC 后再开
   otlp_endpoint: "localhost:4317"
   service_name: "api-service"

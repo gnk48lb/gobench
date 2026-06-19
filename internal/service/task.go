@@ -113,12 +113,18 @@ func (s *taskService) TriggerTask(taskID uint) (*model.TaskLog, error) {
 		return nil, err
 	}
 
-	// 返回最小化 TaskLog，handler 层只需 log.ID，不需要完整记录
-	return &model.TaskLog{
-		Model:  gorm.Model{ID: logID},
-		TaskID: taskID,
-		Status: "pending",
-	}, nil
+	log, err := s.logRepo.GetByID(logID)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		return &model.TaskLog{
+			Model:  gorm.Model{ID: logID},
+			TaskID: taskID,
+			Status: "pending",
+		}, nil
+	}
+	return log, nil
 }
 
 func (s *taskService) GetTaskLogs(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error) {
@@ -142,11 +148,18 @@ func (s *taskService) ScheduleTask(taskID uint, delaySeconds int) (*model.TaskLo
 		return nil, err
 	}
 
-	return &model.TaskLog{
-		Model:  gorm.Model{ID: logID},
-		TaskID: taskID,
-		Status: "pending",
-	}, nil
+	log, err := s.logRepo.GetByID(logID)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		return &model.TaskLog{
+			Model:  gorm.Model{ID: logID},
+			TaskID: taskID,
+			Status: "pending",
+		}, nil
+	}
+	return log, nil
 }
 
 func (s *taskService) GetOverallStats(since time.Time) (*repository.OverallStats, error) {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.uber.org/zap"
 
 	"gobench/internal/handler"
@@ -105,6 +106,7 @@ func main() {
 
 	// 12. Init Gin router & Routes
 	router := gin.Default()
+	router.Use(otelgin.Middleware("api-service"))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})

@@ -1,8 +1,11 @@
 package repository
 
 import (
-	"gorm.io/gorm"
+	"errors"
 	"time"
+
+	"gorm.io/gorm"
+
 	"gobench/internal/model"
 	"gobench/pkg/database"
 )
@@ -28,6 +31,7 @@ type TaskStats struct {
 
 type TaskLogRepository interface {
 	Create(log *model.TaskLog) error
+	GetByID(id uint) (*model.TaskLog, error) // 新增
 	UpdateStatus(id uint, workerID string, retryNum int, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error
 	ListByTaskID(taskID uint, page, pageSize int) ([]*model.TaskLog, int64, error)
 	GetOverallStats(since time.Time) (*OverallStats, error)
@@ -45,6 +49,19 @@ func NewTaskLogRepository() TaskLogRepository {
 func (r *taskLogRepository) Create(log *model.TaskLog) error {
 	return r.db.Create(log).Error
 }
+
+func (r *taskLogRepository) GetByID(id uint) (*model.TaskLog, error) {
+	var log model.TaskLog
+	err := r.db.First(&log, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &log, nil
+}
+
 
 func (r *taskLogRepository) UpdateStatus(id uint, workerID string, retryNum int, status, output, errorMsg string, startedAt, finishedAt *time.Time, durationMs int64) error {
 	updates := map[string]interface{}{
